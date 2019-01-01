@@ -3,11 +3,13 @@ package com.wise.jpa.hibernate.hibernateapp;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNull;
 
+
 import java.util.List;
 
+import javax.persistence.EntityGraph;
 import javax.persistence.EntityManager;
-import javax.persistence.Query;
-import javax.persistence.TypedQuery;
+import javax.persistence.Subgraph;
+import javax.transaction.Transactional;
 
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -19,75 +21,117 @@ import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.junit4.SpringRunner;
 
 import com.wise.jpa.hibernate.hibernateapp.entity.Course;
+import com.wise.jpa.hibernate.hibernateapp.entity.Review;
+import com.wise.jpa.hibernate.hibernateapp.entity.Student;
 import com.wise.jpa.hibernate.hibernateapp.repository.CourseRepository;
 
 @RunWith(SpringRunner.class)
-@SpringBootTest(classes=HibernateAppApplication.class)
+@SpringBootTest(classes = HibernateAppApplication.class)
 public class CourseRepositoryTest {
-private Logger logger = LoggerFactory.getLogger(this.getClass());
-	
+
+	private Logger logger = LoggerFactory.getLogger(this.getClass());
+
 	@Autowired
 	CourseRepository repository;
-	
+
+	@Autowired
+	EntityManager em;
+
 	@Test
 	public void findById_basic() {
-		Course course = repository.findById(10002L);
-		assertEquals("Spring in 50 Steps", course.getName());
+		Course course = repository.findById(10001L);
+		assertEquals("JPA in 50 Steps", course.getName());
 	}
 	
+	@Test
+	public void findById_firstLevelCacheDemo() {
+		
+		Course course = repository.findById(10001L);
+		logger.info("First Course Retrieved {}", course);
+
+		Course course1 = repository.findById(10001L);
+		logger.info("First Course Retrieved again {}", course1);
+
+		assertEquals("JPA in 50 Steps", course.getName());
+		
+		assertEquals("JPA in 50 Steps", course1.getName());
+	}
+
+
 	@Test
 	@DirtiesContext
 	public void deleteById_basic() {
 		repository.deleteById(10002L);
 		assertNull(repository.findById(10002L));
 	}
-	
+
 	@Test
 	@DirtiesContext
 	public void save_basic() {
-
 		// get a course
 		Course course = repository.findById(10001L);
 		assertEquals("JPA in 50 Steps", course.getName());
 
 		// update details
 		course.setName("JPA in 50 Steps - Updated");
-
 		repository.save(course);
 
 		// check the value
 		Course course1 = repository.findById(10001L);
 		assertEquals("JPA in 50 Steps - Updated", course1.getName());
 	}
-	
-	@Autowired
-	EntityManager em;
 
 	@Test
-	public void jpql_basic() {
-		Query query = em.createQuery("Select  c  From Course c");
-		List resultList = query.getResultList();
-		logger.info("Select  c  From Course c -> {}",resultList);
+	@DirtiesContext
+	public void playWithEntityManager() {
+		repository.playWithEntityManager();
 	}
 
 	@Test
-	public void jpql_typed() {
-		TypedQuery<Course> query = 
-					em.createQuery("Select  c  From Course c", Course.class);
-		
-		List<Course> resultList = query.getResultList();
-		
-		logger.info("Select  c  From Course c -> {}",resultList);
+	@Transactional
+	public void retrieveReviewsForCourse() {
+		Course course = repository.findById(10001L);
+		logger.info("{}", course.getReviews());
 	}
 
 	@Test
-	public void jpql_where() {
-		TypedQuery<Course> query = 
-					em.createQuery("Select  c  From Course c where name like '%100 Steps'", Course.class);
-		
-		List<Course> resultList = query.getResultList();
-		
-		logger.info("Select  c  From Course c where name like '%100 Steps'-> {}",resultList);
-		//[Course[Web Services in 100 Steps], Course[Spring Boot in 100 Steps]]
+	@Transactional
+	public void retrieveCourseForReview() {
+		Review review = em.find(Review.class, 50001L);
+		logger.info("{}", review.getCourse());
 	}
+
+	@Test
+	@Transactional
+	@DirtiesContext
+	public void performance() {
+		//for (int i = 0; i < 20; i++)
+			//em.persist(new Course("Something" + i));
+		//em.flush();
+		
+		//EntityGraph graph = em.getEntityGraph("graph.CourseAndStudents");
+		
+		EntityGraph<Course> graph = em.createEntityGraph(Course.class);
+	    Subgraph<List<Student>> bookSubGraph = graph.addSubgraph("students");
+	    
+	    List<Course> courses = em.createQuery("Select c from Course c", Course.class)
+	        .setHint("javax.persistence.loadgraph", graph)
+	        .getResultList();
+	    for (Course course : courses) {
+	      System.out.println(course + " " + course.getStudents());
+	    }
+	}
+
+	@Test
+	@Transactional
+	@DirtiesContext
+	public void performance_without_hint() {	    
+	    List<Course> courses = em.createQuery("Select c from Course c", Course.class)
+	        //.setHint("javax.persistence.loadgraph", graph)
+	        .getResultList();
+	    for (Course course : courses) {
+	      System.out.println(course + " " + course.getStudents());
+	    }
+	}
+
 }
